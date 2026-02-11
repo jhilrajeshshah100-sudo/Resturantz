@@ -1,0 +1,8 @@
+{
+  "name": "Farm & Fork: Wedding Union",
+  "description": "An elegant social companion for wedding guests to coordinate dining, social activities, and community connections.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
