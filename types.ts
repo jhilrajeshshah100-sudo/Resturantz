@@ -1,5 +1,6 @@
 
 export enum Screen {
+  LANDING = 'landing',
   HOME = 'home',
   DINING = 'dining',
   GUESTS = 'guests',

@@ -24,9 +24,9 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
       <section className="relative mb-12">
         <div className="relative h-[440px] rounded-3xl overflow-hidden shadow-2xl">
           <img 
-            alt="Elegant Wedding Dinner Setup" 
+            alt="Farm and Fork Culinary Experience" 
             className="absolute inset-0 w-full h-full object-cover" 
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuD-pgCiHLuTMAar-mbJNH2YEbtR5WNwByb9P0a1eyi41vK5nIhr1JPSHkPlJWRQrk4VgQCWFwz8k3MT4yRANb9fbnRQKeO0D0NarRRoVuEVMxoo1uu6Ji0V5tw-5TT46zIbW3mzF2SUJ_2CrHCFJ1a64pp92jr6DfDq8w7w7u40agKDY6RDQAHEYdna4aiXwbppljRF2vXS0W5r9W4Cf-OrNanZteqBWB_rTTkPYoJ5W11rJ_FpwFu8z_Ijf349fNLYEXxWDm8LME0"
+            src="https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&q=80&w=1974"
           />
           <div className="absolute inset-0 hero-gradient flex flex-col justify-end p-8 text-white">
             <span className="text-primary font-bold tracking-widest uppercase text-xs mb-2">Welcome to the Union</span>

@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { Screen } from './types';
+import LandingScreen from './screens/LandingScreen';
 import HomeScreen from './screens/HomeScreen';
 import DiningScreen from './screens/DiningScreen';
 import GuestsScreen from './screens/GuestsScreen';
@@ -11,11 +12,13 @@ import Navigation from './components/Navigation';
 import AICompanion from './components/AICompanion';
 
 const App: React.FC = () => {
-  const [currentScreen, setCurrentScreen] = useState<Screen>(Screen.HOME);
+  const [currentScreen, setCurrentScreen] = useState<Screen>(Screen.LANDING);
   const [isAICompanionOpen, setIsAICompanionOpen] = useState(false);
 
   const renderScreen = () => {
     switch (currentScreen) {
+      case Screen.LANDING:
+        return <LandingScreen onEnter={() => setCurrentScreen(Screen.HOME)} />;
       case Screen.HOME:
         return <HomeScreen onNavigate={setCurrentScreen} />;
       case Screen.DINING:
@@ -33,15 +36,17 @@ const App: React.FC = () => {
     }
   };
 
+  const showNavigation = currentScreen !== Screen.LANDING && currentScreen !== Screen.CONCIERGE;
+
   return (
     <div className="min-h-screen bg-background-light dark:bg-background-dark text-navy-900 dark:text-white transition-colors duration-300">
       {/* Dynamic Screen Content */}
-      <div className="max-w-md mx-auto relative min-h-screen pb-24">
+      <div className="max-w-md mx-auto relative min-h-screen">
         {renderScreen()}
       </div>
 
-      {/* Floating Navigation (hidden on Concierge screen for focus) */}
-      {currentScreen !== Screen.CONCIERGE && (
+      {/* Floating Navigation */}
+      {showNavigation && (
         <Navigation 
           currentScreen={currentScreen} 
           onNavigate={setCurrentScreen} 
