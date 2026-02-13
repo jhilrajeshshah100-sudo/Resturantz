@@ -54,7 +54,7 @@ interface ConciergeScreenProps {
 const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
   const [isLive, setIsLive] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'model', text: "Welcome back. I am your Union Assistant. Would you like to chat via text or start a live voice session for hands-free help?" }
+    { role: 'model', text: "Welcome back. I am your Union Assistant. How can I help you prepare for the wedding today?" }
   ]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -98,10 +98,10 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
         contents: apiContents,
         config: {
           systemInstruction: `You are the primary Union Concierge for the Farm & Fork wedding. 
-          Provide rich, detailed, and personalized information about Vineyard Valley Estate. 
-          Information: Friday tours at 2, Dinner at 7 at Estate Kitchen. Saturday ceremony at 4. 
-          Registry is 'The Union Registry'. Shuttles from Valley Inn. Dress is Vineyard Chic.
-          Be elegant, slightly formal, but very helpful. Use Google Search for weather or local flight info.`,
+          Provide warm, helpful, and personalized information about the wedding at Vineyard Valley Estate. 
+          Key Details: Friday vineyard tour at 2PM, Dinner at 7PM at Estate Kitchen. Saturday ceremony at 4PM. 
+          Registry: 'The Union Registry'. Shuttles from Valley Inn. Dress: Vineyard Chic.
+          Be elegant, welcoming, and refined. Use Google Search for weather or flight info.`,
           tools: [{ googleSearch: {} }]
         }
       });
@@ -119,10 +119,10 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
     } catch (err: any) {
       console.error(err);
       if (err.message?.includes("API_KEY_INVALID") || err.message?.includes("Requested entity was not found")) {
-        setMessages(prev => [...prev, { role: 'model', text: "Connection error. Please refresh your API key setting below. ✨" }]);
+        setMessages(prev => [...prev, { role: 'model', text: "Connection error. Please refresh your API key using the link below. ✨" }]);
         handleOpenKeySelector();
       } else {
-        setMessages(prev => [...prev, { role: 'model', text: "I've encountered a slight delay. Please try again in a moment. 🥂" }]);
+        setMessages(prev => [...prev, { role: 'model', text: "I've encountered a slight delay. Please try again. 🥂" }]);
       }
     } finally {
       setIsTyping(false);
@@ -191,7 +191,7 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } },
-          systemInstruction: "You are the live voice assistant for the Farm & Fork wedding. Be brief, elegant, and witty."
+          systemInstruction: "You are the warm voice of the Union Concierge. Speak naturally and helpfully about the wedding."
         }
       });
       sessionRef.current = await sessionPromise;
@@ -203,28 +203,28 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#0E151B] text-white">
-      <header className="p-6 flex items-center justify-between border-b border-white/5 bg-[#16212B]/80 backdrop-blur-xl">
+    <div className="flex flex-col h-screen bg-[#16212B] text-white">
+      <header className="p-6 flex items-center justify-between border-b border-white/5 bg-[#1A252F]/90 backdrop-blur-xl">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 -ml-2 text-gray-400 hover:text-white transition-colors">
             <span className="material-icons-round">arrow_back_ios_new</span>
           </button>
           <div>
-            <h1 className="font-display text-2xl text-primary">Union Concierge</h1>
+            <h1 className="font-display text-2xl text-primary leading-tight">Union Concierge</h1>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-green-500 animate-pulse' : 'bg-gray-600'}`}></span>
               <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{isLive ? 'Live Voice Active' : 'Text Mode'}</span>
             </div>
           </div>
         </div>
-        <button onClick={toggleLive} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-xl active:scale-90 ${isLive ? 'bg-red-500 shadow-red-500/20' : 'bg-primary/10 text-primary border border-primary/20'}`}>
+        <button onClick={toggleLive} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${isLive ? 'bg-red-500 shadow-lg shadow-red-500/20' : 'bg-primary/10 text-primary border border-primary/20'}`}>
           <span className="material-icons-round">{isLive ? 'mic_off' : 'mic'}</span>
         </button>
       </header>
 
       <div className="flex-1 overflow-hidden flex flex-col relative">
         {isLive ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-[#0E151B]">
+          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-[#16212B]">
             <div className="relative mb-12">
                <div className="absolute inset-0 bg-primary/20 rounded-full blur-3xl animate-pulse"></div>
                <svg className="w-48 h-48 relative z-10" viewBox="0 0 100 100">
@@ -233,8 +233,8 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
                  <defs><radialGradient id="orbGradient"><stop offset="0%" stopColor="#C5A059" /><stop offset="100%" stopColor="#8B6B32" /></radialGradient></defs>
                </svg>
             </div>
-            <h2 className="text-2xl font-display mb-4">Live Voice Mode</h2>
-            <p className="text-gray-400 text-sm max-w-xs mx-auto">Speak naturally. I'm listening to help with your wedding logistics.</p>
+            <h2 className="text-2xl font-display mb-4">Hands-Free Mode</h2>
+            <p className="text-gray-400 text-sm max-w-xs mx-auto">I'm listening. Ask me anything about the wedding festivities.</p>
             <button onClick={toggleLive} className="mt-12 px-8 py-3 bg-white/5 border border-white/10 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-colors">Switch to Text</button>
           </div>
         ) : (
@@ -246,7 +246,7 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
                     <p className="text-[15px] leading-relaxed">{m.text}</p>
                     {m.sources && m.sources.length > 0 && (
                       <div className="mt-4 pt-4 border-t border-white/5">
-                        <p className="text-[9px] uppercase font-black text-primary/60 tracking-tighter mb-2">Verified Sources</p>
+                        <p className="text-[9px] uppercase font-black text-primary/60 tracking-tighter mb-2">Sources</p>
                         <div className="flex flex-wrap gap-2">
                           {m.sources.map((s, idx) => (
                             <a key={idx} href={s.uri} target="_blank" rel="noopener noreferrer" className="text-[10px] bg-white/5 hover:bg-white/10 text-primary border border-primary/20 px-3 py-1.5 rounded-xl transition-colors">
@@ -261,7 +261,7 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
               ))}
               {isTyping && (
                 <div className="flex justify-start">
-                  <div className="bg-[#1A252F] p-5 rounded-3xl rounded-tl-none flex gap-1.5 items-center">
+                  <div className="bg-[#1A252F] p-5 rounded-3xl rounded-tl-none flex gap-1.5 items-center shadow-xl">
                     <div className="w-2 h-2 bg-primary/40 rounded-full animate-bounce"></div>
                     <div className="w-2 h-2 bg-primary/40 rounded-full animate-bounce [animation-delay:0.2s]"></div>
                     <div className="w-2 h-2 bg-primary/40 rounded-full animate-bounce [animation-delay:0.4s]"></div>
@@ -269,15 +269,15 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
                 </div>
               )}
             </div>
-            <div className="p-6 bg-[#16212B] border-t border-white/5">
+            <div className="p-6 bg-[#1A252F] border-t border-white/5">
               <div className="flex gap-3 items-center">
                 <input 
                   type="text" 
                   value={inputText} 
                   onChange={(e) => setInputText(e.target.value)} 
                   onKeyDown={(e) => e.key === 'Enter' && handleSendText()} 
-                  placeholder="Ask your concierge..." 
-                  className="flex-1 bg-[#0E151B] border border-white/5 rounded-2xl py-4 px-6 text-sm text-white outline-none focus:ring-1 focus:ring-primary/40 transition-all" 
+                  placeholder="Ask the concierge..." 
+                  className="flex-1 bg-[#16212B] border border-white/5 rounded-2xl py-4 px-6 text-sm text-white outline-none focus:ring-1 focus:ring-primary/40 transition-all" 
                 />
                 <button 
                   disabled={isTyping || !inputText.trim()} 
@@ -287,9 +287,9 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
                   <span className="material-icons-round">{isTyping ? 'hourglass_top' : 'send'}</span>
                 </button>
               </div>
-              <div className="mt-4 text-center">
-                <button onClick={handleOpenKeySelector} className="text-[9px] uppercase tracking-[0.3em] font-black text-gray-700 hover:text-primary transition-colors">
-                  System Settings & API Access
+              <div className="mt-4 flex justify-center">
+                <button onClick={handleOpenKeySelector} className="text-[9px] uppercase tracking-[0.2em] font-bold text-gray-600 hover:text-primary transition-colors">
+                  API Key Management
                 </button>
               </div>
             </div>
