@@ -86,7 +86,6 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
       
-      // CRITICAL: Filter out initial model message to start with 'user'
       const apiContents = currentMessages
         .filter((m, idx) => !(idx === 0 && m.role === 'model'))
         .map(m => ({
@@ -98,32 +97,33 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
         model: 'gemini-3-flash-preview',
         contents: apiContents,
         config: {
-          systemInstruction: "You are the elegant Union Assistant for the Farm & Fork wedding. Be warm, helpful, and concise. Use Google Search for weather and local valley info.",
+          systemInstruction: `You are the primary Union Concierge for the Farm & Fork wedding. 
+          Provide rich, detailed, and personalized information about Vineyard Valley Estate. 
+          Information: Friday tours at 2, Dinner at 7 at Estate Kitchen. Saturday ceremony at 4. 
+          Registry is 'The Union Registry'. Shuttles from Valley Inn. Dress is Vineyard Chic.
+          Be elegant, slightly formal, but very helpful. Use Google Search for weather or local flight info.`,
           tools: [{ googleSearch: {} }]
         }
       });
 
-      const responseText = result.text || "I'm sorry, I couldn't process that.";
-      
+      const responseText = result.text || "I apologize, I'm having trouble retrieving that information.";
       const sources: { uri: string; title: string }[] = [];
       const chunks = result.candidates?.[0]?.groundingMetadata?.groundingChunks;
       if (chunks) {
         chunks.forEach((chunk: any) => {
-          if (chunk.web && chunk.web.uri) {
-            sources.push({ uri: chunk.web.uri, title: chunk.web.title || chunk.web.uri });
-          }
+          if (chunk.web) sources.push({ uri: chunk.web.uri, title: chunk.web.title || chunk.web.uri });
         });
       }
 
       setMessages(prev => [...prev, { role: 'model', text: responseText, sources }]);
     } catch (err: any) {
       console.error(err);
-      let errorDisplay = "I encountered an issue. Please try again.";
-      if (err.message?.includes("Requested entity was not found") || err.message?.includes("API_KEY_INVALID")) {
-        errorDisplay = "API connection failed. Please refresh your project key.";
+      if (err.message?.includes("API_KEY_INVALID") || err.message?.includes("Requested entity was not found")) {
+        setMessages(prev => [...prev, { role: 'model', text: "Connection error. Please refresh your API key setting below. ✨" }]);
         handleOpenKeySelector();
+      } else {
+        setMessages(prev => [...prev, { role: 'model', text: "I've encountered a slight delay. Please try again in a moment. 🥂" }]);
       }
-      setMessages(prev => [...prev, { role: 'model', text: errorDisplay }]);
     } finally {
       setIsTyping(false);
     }
@@ -185,6 +185,7 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
           onerror: (e) => {
             console.error("Live Error", e);
             setIsLive(false);
+            handleOpenKeySelector();
           }
         },
         config: {
@@ -216,7 +217,7 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
             </div>
           </div>
         </div>
-        <button onClick={toggleLive} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${isLive ? 'bg-red-500' : 'bg-primary/10 text-primary border border-primary/20'}`}>
+        <button onClick={toggleLive} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-xl active:scale-90 ${isLive ? 'bg-red-500 shadow-red-500/20' : 'bg-primary/10 text-primary border border-primary/20'}`}>
           <span className="material-icons-round">{isLive ? 'mic_off' : 'mic'}</span>
         </button>
       </header>
@@ -232,9 +233,9 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
                  <defs><radialGradient id="orbGradient"><stop offset="0%" stopColor="#C5A059" /><stop offset="100%" stopColor="#8B6B32" /></radialGradient></defs>
                </svg>
             </div>
-            <h2 className="text-2xl font-display mb-4">Hands-Free Mode</h2>
-            <p className="text-gray-400 text-sm max-w-xs mx-auto">I'm listening. Speak naturally about your wedding needs.</p>
-            <button onClick={toggleLive} className="mt-12 px-8 py-3 bg-white/5 border border-white/10 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-white/10">Switch to Text</button>
+            <h2 className="text-2xl font-display mb-4">Live Voice Mode</h2>
+            <p className="text-gray-400 text-sm max-w-xs mx-auto">Speak naturally. I'm listening to help with your wedding logistics.</p>
+            <button onClick={toggleLive} className="mt-12 px-8 py-3 bg-white/5 border border-white/10 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-colors">Switch to Text</button>
           </div>
         ) : (
           <div className="flex-1 flex flex-col overflow-hidden">
@@ -245,7 +246,7 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
                     <p className="text-[15px] leading-relaxed">{m.text}</p>
                     {m.sources && m.sources.length > 0 && (
                       <div className="mt-4 pt-4 border-t border-white/5">
-                        <p className="text-[9px] uppercase font-black text-primary/60 tracking-tighter mb-2">Validated Sources</p>
+                        <p className="text-[9px] uppercase font-black text-primary/60 tracking-tighter mb-2">Verified Sources</p>
                         <div className="flex flex-wrap gap-2">
                           {m.sources.map((s, idx) => (
                             <a key={idx} href={s.uri} target="_blank" rel="noopener noreferrer" className="text-[10px] bg-white/5 hover:bg-white/10 text-primary border border-primary/20 px-3 py-1.5 rounded-xl transition-colors">
@@ -260,7 +261,7 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
               ))}
               {isTyping && (
                 <div className="flex justify-start">
-                  <div className="bg-[#1A252F] p-4 rounded-3xl rounded-tl-none flex gap-1">
+                  <div className="bg-[#1A252F] p-5 rounded-3xl rounded-tl-none flex gap-1.5 items-center">
                     <div className="w-2 h-2 bg-primary/40 rounded-full animate-bounce"></div>
                     <div className="w-2 h-2 bg-primary/40 rounded-full animate-bounce [animation-delay:0.2s]"></div>
                     <div className="w-2 h-2 bg-primary/40 rounded-full animate-bounce [animation-delay:0.4s]"></div>
@@ -270,14 +271,25 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
             </div>
             <div className="p-6 bg-[#16212B] border-t border-white/5">
               <div className="flex gap-3 items-center">
-                <input type="text" value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendText()} placeholder="Ask the Concierge..." className="flex-1 bg-[#0E151B] border border-white/5 rounded-2xl py-4 px-6 text-sm text-white outline-none focus:ring-1 focus:ring-primary/40" />
-                <button disabled={isTyping || !inputText.trim()} onClick={handleSendText} className={`p-4 rounded-2xl shadow-xl transition-all ${isTyping || !inputText.trim() ? 'bg-gray-800 text-gray-500' : 'bg-primary text-white active:scale-95'}`}>
+                <input 
+                  type="text" 
+                  value={inputText} 
+                  onChange={(e) => setInputText(e.target.value)} 
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendText()} 
+                  placeholder="Ask your concierge..." 
+                  className="flex-1 bg-[#0E151B] border border-white/5 rounded-2xl py-4 px-6 text-sm text-white outline-none focus:ring-1 focus:ring-primary/40 transition-all" 
+                />
+                <button 
+                  disabled={isTyping || !inputText.trim()} 
+                  onClick={handleSendText} 
+                  className={`p-4 rounded-2xl shadow-xl transition-all ${isTyping || !inputText.trim() ? 'bg-gray-800 text-gray-500' : 'bg-primary text-white active:scale-95'}`}
+                >
                   <span className="material-icons-round">{isTyping ? 'hourglass_top' : 'send'}</span>
                 </button>
               </div>
               <div className="mt-4 text-center">
-                <button onClick={handleOpenKeySelector} className="text-[9px] uppercase tracking-widest font-bold text-gray-600 hover:text-primary transition-colors">
-                  System Settings: Configure API Access
+                <button onClick={handleOpenKeySelector} className="text-[9px] uppercase tracking-[0.3em] font-black text-gray-700 hover:text-primary transition-colors">
+                  System Settings & API Access
                 </button>
               </div>
             </div>
