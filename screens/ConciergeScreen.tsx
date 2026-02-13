@@ -44,6 +44,7 @@ async function decodeAudioData(
 interface Message {
   role: 'user' | 'model';
   text: string;
+  sources?: { uri: string; title: string }[];
 }
 
 interface ConciergeScreenProps {
@@ -57,7 +58,6 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
   ]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [streamingText, setStreamingText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -67,47 +67,63 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages, streamingText, isTyping]);
+  }, [messages, isTyping]);
+
+  const handleOpenKeySelector = async () => {
+    if (window.aistudio && window.aistudio.openSelectKey) {
+      await window.aistudio.openSelectKey();
+    }
+  };
 
   const handleSendText = async () => {
     if (!inputText.trim() || isTyping) return;
     const userMsg = inputText.trim();
-    const newMessages: Message[] = [...messages, { role: 'user', text: userMsg }];
-    setMessages(newMessages);
+    const currentMessages: Message[] = [...messages, { role: 'user', text: userMsg }];
+    setMessages(currentMessages);
     setInputText('');
     setIsTyping(true);
-    setStreamingText('');
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
       
-      // CRITICAL FIX: Ensure history starts with 'user'
-      const apiContents = newMessages
+      // CRITICAL: Filter out initial model message to start with 'user'
+      const apiContents = currentMessages
         .filter((m, idx) => !(idx === 0 && m.role === 'model'))
         .map(m => ({
           role: m.role,
           parts: [{ text: m.text }]
         }));
 
-      const stream = await ai.models.generateContentStream({
+      const result = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: apiContents,
         config: {
-          systemInstruction: "You are the elegant Union Assistant for Farm & Fork wedding. Be warm, helpful, and concise. Use Google Search for weather and local info.",
+          systemInstruction: "You are the elegant Union Assistant for the Farm & Fork wedding. Be warm, helpful, and concise. Use Google Search for weather and local valley info.",
           tools: [{ googleSearch: {} }]
         }
       });
 
-      let fullResponse = '';
-      for await (const chunk of stream) {
-        fullResponse += chunk.text || '';
-        setStreamingText(fullResponse);
+      const responseText = result.text || "I'm sorry, I couldn't process that.";
+      
+      const sources: { uri: string; title: string }[] = [];
+      const chunks = result.candidates?.[0]?.groundingMetadata?.groundingChunks;
+      if (chunks) {
+        chunks.forEach((chunk: any) => {
+          if (chunk.web && chunk.web.uri) {
+            sources.push({ uri: chunk.web.uri, title: chunk.web.title || chunk.web.uri });
+          }
+        });
       }
-      setMessages(prev => [...prev, { role: 'model', text: fullResponse }]);
-      setStreamingText('');
+
+      setMessages(prev => [...prev, { role: 'model', text: responseText, sources }]);
     } catch (err: any) {
       console.error(err);
-      setMessages(prev => [...prev, { role: 'model', text: `I encountered an issue: ${err.message || 'connection error'}. Please try again.` }]);
+      let errorDisplay = "I encountered an issue. Please try again.";
+      if (err.message?.includes("Requested entity was not found") || err.message?.includes("API_KEY_INVALID")) {
+        errorDisplay = "API connection failed. Please refresh your project key.";
+        handleOpenKeySelector();
+      }
+      setMessages(prev => [...prev, { role: 'model', text: errorDisplay }]);
     } finally {
       setIsTyping(false);
     }
@@ -166,18 +182,22 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
             }
           },
           onclose: () => setIsLive(false),
-          onerror: () => setIsLive(false)
+          onerror: (e) => {
+            console.error("Live Error", e);
+            setIsLive(false);
+          }
         },
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } },
-          systemInstruction: "You are the live voice assistant for the Farm & Fork wedding. Be brief and witty."
+          systemInstruction: "You are the live voice assistant for the Farm & Fork wedding. Be brief, elegant, and witty."
         }
       });
       sessionRef.current = await sessionPromise;
     } catch (err) {
       console.error(err);
       setIsLive(false);
+      handleOpenKeySelector();
     }
   };
 
@@ -213,32 +233,51 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
                </svg>
             </div>
             <h2 className="text-2xl font-display mb-4">Hands-Free Mode</h2>
-            <p className="text-gray-400 text-sm max-w-xs mx-auto">I'm listening. Ask me anything about the wedding.</p>
-            <button onClick={toggleLive} className="mt-12 px-8 py-3 bg-white/5 border border-white/10 rounded-full text-xs font-bold uppercase tracking-widest">Switch to Text</button>
+            <p className="text-gray-400 text-sm max-w-xs mx-auto">I'm listening. Speak naturally about your wedding needs.</p>
+            <button onClick={toggleLive} className="mt-12 px-8 py-3 bg-white/5 border border-white/10 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-white/10">Switch to Text</button>
           </div>
         ) : (
           <div className="flex-1 flex flex-col overflow-hidden">
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
               {messages.map((m, i) => (
-                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
                   <div className={`max-w-[85%] p-5 rounded-3xl shadow-xl ${m.role === 'user' ? 'bg-primary text-white rounded-tr-none' : 'bg-[#1A252F] text-gray-100 rounded-tl-none border border-white/5'}`}>
                     <p className="text-[15px] leading-relaxed">{m.text}</p>
+                    {m.sources && m.sources.length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-white/5">
+                        <p className="text-[9px] uppercase font-black text-primary/60 tracking-tighter mb-2">Validated Sources</p>
+                        <div className="flex flex-wrap gap-2">
+                          {m.sources.map((s, idx) => (
+                            <a key={idx} href={s.uri} target="_blank" rel="noopener noreferrer" className="text-[10px] bg-white/5 hover:bg-white/10 text-primary border border-primary/20 px-3 py-1.5 rounded-xl transition-colors">
+                              {s.title}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
-              {streamingText && (
+              {isTyping && (
                 <div className="flex justify-start">
-                  <div className="max-w-[85%] p-5 rounded-3xl rounded-tl-none bg-[#1A252F] text-gray-100 border border-white/5 shadow-xl">
-                    <p className="text-[15px] leading-relaxed">{streamingText}</p>
+                  <div className="bg-[#1A252F] p-4 rounded-3xl rounded-tl-none flex gap-1">
+                    <div className="w-2 h-2 bg-primary/40 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-primary/40 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                    <div className="w-2 h-2 bg-primary/40 rounded-full animate-bounce [animation-delay:0.4s]"></div>
                   </div>
                 </div>
               )}
             </div>
             <div className="p-6 bg-[#16212B] border-t border-white/5">
               <div className="flex gap-3 items-center">
-                <input type="text" value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendText()} placeholder="Ask the Concierge..." className="flex-1 bg-[#0E151B] border border-white/5 rounded-2xl py-4 px-6 text-sm text-white outline-none" />
-                <button disabled={isTyping || !inputText.trim()} onClick={handleSendText} className={`p-4 rounded-2xl ${isTyping || !inputText.trim() ? 'bg-gray-800 text-gray-500' : 'bg-primary text-white'}`}>
+                <input type="text" value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendText()} placeholder="Ask the Concierge..." className="flex-1 bg-[#0E151B] border border-white/5 rounded-2xl py-4 px-6 text-sm text-white outline-none focus:ring-1 focus:ring-primary/40" />
+                <button disabled={isTyping || !inputText.trim()} onClick={handleSendText} className={`p-4 rounded-2xl shadow-xl transition-all ${isTyping || !inputText.trim() ? 'bg-gray-800 text-gray-500' : 'bg-primary text-white active:scale-95'}`}>
                   <span className="material-icons-round">{isTyping ? 'hourglass_top' : 'send'}</span>
+                </button>
+              </div>
+              <div className="mt-4 text-center">
+                <button onClick={handleOpenKeySelector} className="text-[9px] uppercase tracking-widest font-bold text-gray-600 hover:text-primary transition-colors">
+                  System Settings: Configure API Access
                 </button>
               </div>
             </div>
