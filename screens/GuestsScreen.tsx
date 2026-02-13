@@ -9,6 +9,7 @@ interface GuestsScreenProps {
 const GuestsScreen: React.FC<GuestsScreenProps> = ({ onNavigate }) => {
   const categories = ['All', "Groom's Family", "Bride's Family", 'Friends'];
   const [activeCategory, setActiveCategory] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const allGuests = [
     // Groom's Family (Shah Family - matching Jhil Shah)
@@ -28,9 +29,13 @@ const GuestsScreen: React.FC<GuestsScreenProps> = ({ onNavigate }) => {
     { id: 10, name: 'Ishita Kapoor', relation: 'School Friend', category: 'Friends', avatar: 'https://picsum.photos/seed/ik/100/100', online: false },
   ];
 
-  const filteredGuests = activeCategory === 'All' 
-    ? allGuests 
-    : allGuests.filter(guest => guest.category === activeCategory);
+  const filteredGuests = allGuests.filter(guest => {
+    const matchesCategory = activeCategory === 'All' || guest.category === activeCategory;
+    const matchesSearch = 
+      guest.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      guest.relation.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
   return (
     <div className="px-6 py-12 pb-32">
@@ -51,9 +56,19 @@ const GuestsScreen: React.FC<GuestsScreenProps> = ({ onNavigate }) => {
         <span className="absolute left-4 top-1/2 -translate-y-1/2 material-icons-round text-gray-400">search</span>
         <input 
           type="text" 
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search by name or relation..." 
           className="w-full pl-12 pr-4 py-4 bg-white dark:bg-navy-800 border-none rounded-2xl shadow-sm focus:ring-2 focus:ring-primary/20 text-sm placeholder:text-gray-300 outline-none"
         />
+        {searchQuery && (
+          <button 
+            onClick={() => setSearchQuery('')}
+            className="absolute right-4 top-1/2 -translate-y-1/2 material-icons-round text-gray-300 hover:text-gray-500"
+          >
+            cancel
+          </button>
+        )}
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-4 mb-8 no-scrollbar">
@@ -101,15 +116,23 @@ const GuestsScreen: React.FC<GuestsScreenProps> = ({ onNavigate }) => {
             </div>
           ))
         ) : (
-          <div className="py-20 text-center">
+          <div className="py-20 text-center animate-fade-in">
             <span className="material-icons-round text-gray-200 text-6xl mb-4">search_off</span>
-            <p className="text-gray-400 text-sm">No guests found in this section.</p>
+            <p className="text-gray-400 text-sm">No guests found matching your criteria.</p>
+            <button 
+              onClick={() => {setSearchQuery(''); setActiveCategory('All');}}
+              className="mt-4 text-xs font-black uppercase text-primary tracking-widest"
+            >
+              Clear Filters
+            </button>
           </div>
         )}
       </div>
 
       <style>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
       `}</style>
     </div>
   );
