@@ -1,214 +1,311 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
+
+// Audio Helpers
+function encode(bytes: Uint8Array) {
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function decode(base64: string) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function decodeAudioData(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number,
+  numChannels: number,
+): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
+}
 
 interface Message {
   role: 'user' | 'model';
   text: string;
-  sources?: { title: string; uri: string }[];
 }
 
 interface ConciergeScreenProps {
   onBack: () => void;
 }
 
-const SUGGESTIONS = [
-  "What is the dress code?",
-  "Forecast for the wedding day?",
-  "Directions to The Estate Kitchen",
-  "Is there a shuttle service?",
-  "Nearby hotels with vacancies"
-];
-
 const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
+  const [isLive, setIsLive] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'model', text: "Welcome to the Farm & Fork union. I'm your digital concierge. How can I assist with your stay, dining, or the wedding schedule today?" }
+    { role: 'model', text: "Welcome back. I am your Union Assistant. Would you like to chat via text or start a live voice session for hands-free help?" }
   ]);
-  const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [inputText, setInputText] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
   const [streamingText, setStreamingText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Live API Refs
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const sessionRef = useRef<any>(null);
+  const nextStartTimeRef = useRef(0);
+  const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, streamingText, isLoading]);
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages, streamingText, isTyping]);
 
-  const handleSend = async (forcedInput?: string) => {
-    const textToSend = forcedInput || input;
-    if (!textToSend.trim() || isLoading) return;
-
-    const userMessage = textToSend.trim();
-    setMessages(prev => [...prev, { role: 'user', text: userMessage }]);
-    setInput('');
-    setIsLoading(true);
+  // TEXT MODE: sendMessage
+  const handleSendText = async () => {
+    if (!inputText.trim() || isTyping) return;
+    const userMsg = inputText.trim();
+    setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+    setInputText('');
+    setIsTyping(true);
     setStreamingText('');
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      // Construct history for context
-      const history = messages.map(m => ({
-        role: m.role,
-        parts: [{ text: m.text }]
-      }));
-
-      const streamResponse = await ai.models.generateContentStream({
+      const stream = await ai.models.generateContentStream({
         model: 'gemini-3-flash-preview',
-        contents: [...history, { role: 'user', parts: [{ text: userMessage }] }],
+        contents: [...messages, { role: 'user', text: userMsg }].map(m => ({
+          role: m.role,
+          parts: [{ text: m.text }]
+        })),
         config: {
-          systemInstruction: "You are the 'Farm & Fork' wedding union concierge. The wedding is in a beautiful valley with vineyards. Key events: Rehearsal dinner at 'The Estate Kitchen' on Friday at 7 PM. Vineyard Tour Friday at 2 PM. Morning Hike Saturday 8 AM. The main ceremony is Saturday at 4 PM. Use Google Search for weather, local travel, or general etiquette. Be elegant, warm, and helpful. Use emojis like 🥂, 💍, and 🌿 sparingly.",
-          tools: [{ googleSearch: {} }],
-        },
+          systemInstruction: "You are the elegant Union Assistant for Farm & Fork wedding. Be warm, helpful, and concise. Use Google Search for weather and local info.",
+          tools: [{ googleSearch: {} }]
+        }
       });
 
-      let fullText = '';
-      let groundingChunks: any[] = [];
-
-      for await (const chunk of streamResponse) {
-        const textPart = chunk.text;
-        if (textPart) {
-          fullText += textPart;
-          setStreamingText(fullText);
-        }
-        
-        // Capture grounding metadata if available in any chunk
-        const metadata = chunk.candidates?.[0]?.groundingMetadata;
-        if (metadata?.groundingChunks) {
-            groundingChunks = metadata.groundingChunks;
-        }
+      let fullResponse = '';
+      for await (const chunk of stream) {
+        fullResponse += chunk.text || '';
+        setStreamingText(fullResponse);
       }
-
-      const sources = groundingChunks
-        .filter(c => c.web)
-        .map(c => ({ title: c.web.title, uri: c.web.uri }));
-
-      setMessages(prev => [...prev, { 
-        role: 'model', 
-        text: fullText || "I'm sorry, I couldn't find an answer for that.",
-        sources: sources.length > 0 ? sources : undefined
-      }]);
+      setMessages(prev => [...prev, { role: 'model', text: fullResponse }]);
       setStreamingText('');
-    } catch (error) {
-      console.error("AI Error:", error);
-      setMessages(prev => [...prev, { role: 'model', text: "I'm having trouble connecting to the union servers. Please try again in a moment." }]);
+    } catch (err) {
+      console.error(err);
+      setMessages(prev => [...prev, { role: 'model', text: "I encountered an error. Please try again." }]);
     } finally {
-      setIsLoading(false);
+      setIsTyping(false);
+    }
+  };
+
+  // VOICE MODE: Toggle
+  const toggleLive = async () => {
+    if (isLive) {
+      // Close session
+      if (sessionRef.current) sessionRef.current.close();
+      if (audioContextRef.current) audioContextRef.current.close();
+      setIsLive(false);
+      return;
+    }
+
+    // Start Live
+    try {
+      setIsLive(true);
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const inputCtx = new AudioContext({ sampleRate: 16000 });
+      const outputCtx = new AudioContext({ sampleRate: 24000 });
+      audioContextRef.current = outputCtx;
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const source = inputCtx.createMediaStreamSource(stream);
+      const processor = inputCtx.createScriptProcessor(4096, 1, 1);
+
+      const sessionPromise = ai.live.connect({
+        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+        callbacks: {
+          onopen: () => {
+            console.log("Live session opened");
+            processor.onaudioprocess = (e) => {
+              const inputData = e.inputBuffer.getChannelData(0);
+              const int16 = new Int16Array(inputData.length);
+              for (let i = 0; i < inputData.length; i++) {
+                int16[i] = inputData[i] * 32768;
+              }
+              const pcmBlob = {
+                data: encode(new Uint8Array(int16.buffer)),
+                mimeType: 'audio/pcm;rate=16000',
+              };
+              sessionPromise.then(s => s.sendRealtimeInput({ media: pcmBlob }));
+            };
+            source.connect(processor);
+            processor.connect(inputCtx.destination);
+          },
+          onmessage: async (msg: LiveServerMessage) => {
+            // Handle Audio Playback
+            const audioData = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+            if (audioData) {
+              const buf = await decodeAudioData(decode(audioData), outputCtx, 24000, 1);
+              const src = outputCtx.createBufferSource();
+              src.buffer = buf;
+              src.connect(outputCtx.destination);
+              nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtx.currentTime);
+              src.start(nextStartTimeRef.current);
+              nextStartTimeRef.current += buf.duration;
+              sourcesRef.current.add(src);
+              src.onended = () => sourcesRef.current.delete(src);
+            }
+
+            // Interruptions
+            if (msg.serverContent?.interrupted) {
+              sourcesRef.current.forEach(s => s.stop());
+              sourcesRef.current.clear();
+              nextStartTimeRef.current = 0;
+            }
+
+            // Transcriptions
+            if (msg.serverContent?.modelTurn?.parts[0]?.text) {
+               // Update text chat history with transcribed turns if needed
+            }
+          },
+          onclose: () => setIsLive(false),
+          onerror: () => setIsLive(false)
+        },
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } },
+          systemInstruction: "You are the live voice assistant for the Farm & Fork wedding. Be brief and witty."
+        }
+      });
+      sessionRef.current = await sessionPromise;
+
+    } catch (err) {
+      console.error(err);
+      setIsLive(false);
     }
   };
 
   return (
     <div className="flex flex-col h-screen bg-[#0E151B] text-white">
-      {/* Premium Header */}
-      <header className="px-6 py-10 flex items-center justify-between border-b border-white/5 bg-[#0E151B]/80 backdrop-blur-xl sticky top-0 z-20">
+      {/* Header */}
+      <header className="p-6 flex items-center justify-between border-b border-white/5 bg-[#16212B]/80 backdrop-blur-xl">
         <div className="flex items-center gap-4">
-          <button onClick={onBack} className="w-10 h-10 flex items-center justify-center rounded-full bg-white/5 active:scale-90 transition-transform">
-            <span className="material-icons-round text-lg">arrow_back_ios_new</span>
+          <button onClick={onBack} className="p-2 -ml-2 text-gray-400 hover:text-white transition-colors">
+            <span className="material-icons-round">arrow_back_ios_new</span>
           </button>
           <div>
-            <h1 className="font-display text-2xl text-primary font-bold">Union Concierge</h1>
-            <div className="flex items-center gap-1.5">
-                <span className={`w-1.5 h-1.5 rounded-full ${isLoading ? 'bg-primary animate-pulse' : 'bg-green-500'}`}></span>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{isLoading ? 'Processing...' : 'Online'}</p>
+            <h1 className="font-display text-2xl text-primary">Union Concierge</h1>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-green-500 animate-pulse' : 'bg-gray-600'}`}></span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                {isLive ? 'Live Voice Active' : 'Text Mode'}
+              </span>
             </div>
           </div>
         </div>
-        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/20">
-            <span className="material-icons-round text-primary animate-pulse">auto_awesome</span>
+        <div className="flex gap-2">
+            <button 
+                onClick={toggleLive}
+                className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                    isLive ? 'bg-red-500 shadow-lg shadow-red-500/20' : 'bg-primary/10 text-primary border border-primary/20'
+                }`}
+            >
+                <span className="material-icons-round">{isLive ? 'mic_off' : 'mic'}</span>
+            </button>
         </div>
       </header>
 
-      {/* Chat Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-8 scroll-smooth">
-        {messages.map((m, i) => (
-          <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
-            <div className={`max-w-[90%] p-5 rounded-[24px] shadow-2xl ${
-              m.role === 'user' 
-              ? 'bg-gradient-to-br from-primary to-[#A68045] text-white rounded-tr-none' 
-              : 'bg-[#1A252F] text-gray-100 rounded-tl-none border border-white/5'
-            }`}>
-              <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{m.text}</p>
-              
-              {/* Grounding Sources */}
-              {m.sources && m.sources.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-white/10">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-primary mb-2">Sources:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {m.sources.map((source, idx) => (
-                      <a 
-                        key={idx} 
-                        href={source.uri} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-full text-[11px] hover:bg-white/10 transition-colors"
-                      >
-                        <span className="material-icons-round text-[12px]">public</span>
-                        <span className="truncate max-w-[120px]">{source.title}</span>
-                      </a>
-                    ))}
+      {/* Main Content */}
+      <div className="flex-1 overflow-hidden flex flex-col relative">
+        {isLive ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-[#0E151B]">
+            <div className="relative mb-12">
+               {/* Pulsing Orb Visualizer */}
+               <div className="absolute inset-0 bg-primary/20 rounded-full blur-3xl animate-pulse"></div>
+               <svg className="w-48 h-48 relative z-10" viewBox="0 0 100 100">
+                 <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="0.5" className="text-primary/20" />
+                 <circle cx="50" cy="50" r="30" fill="url(#orbGradient)" className="animate-pulse" />
+                 <defs>
+                   <radialGradient id="orbGradient">
+                     <stop offset="0%" stopColor="#C5A059" />
+                     <stop offset="100%" stopColor="#8B6B32" />
+                   </radialGradient>
+                 </defs>
+               </svg>
+            </div>
+            <h2 className="text-2xl font-display mb-4">Hands-Free Mode</h2>
+            <p className="text-gray-400 text-sm max-w-xs mx-auto leading-relaxed">
+              I'm listening. Ask me about the vineyard tour, weather, or dining reservations.
+            </p>
+            <button 
+                onClick={toggleLive}
+                className="mt-12 px-8 py-3 bg-white/5 border border-white/10 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-white/10 transition-colors"
+            >
+                Switch to Text
+            </button>
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+              {messages.map((m, i) => (
+                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] p-5 rounded-3xl shadow-xl ${
+                    m.role === 'user' 
+                    ? 'bg-primary text-white rounded-tr-none' 
+                    : 'bg-[#1A252F] text-gray-100 rounded-tl-none border border-white/5'
+                  }`}>
+                    <p className="text-[15px] leading-relaxed">{m.text}</p>
+                  </div>
+                </div>
+              ))}
+              {streamingText && (
+                <div className="flex justify-start">
+                  <div className="max-w-[85%] p-5 rounded-3xl rounded-tl-none bg-[#1A252F] text-gray-100 border border-white/5 shadow-xl">
+                    <p className="text-[15px] leading-relaxed">{streamingText}</p>
                   </div>
                 </div>
               )}
             </div>
-            <span className="text-[9px] text-gray-500 mt-2 px-2 uppercase font-bold tracking-widest">{m.role === 'user' ? 'You' : 'Concierge'}</span>
-          </div>
-        ))}
 
-        {/* Streaming Buffer */}
-        {streamingText && (
-          <div className="flex flex-col items-start">
-            <div className="max-w-[90%] p-5 rounded-[24px] rounded-tl-none bg-[#1A252F] text-gray-100 border border-white/5 shadow-2xl">
-              <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{streamingText}</p>
+            {/* Input Bar */}
+            <div className="p-6 bg-[#16212B] border-t border-white/5">
+              <div className="flex gap-3 items-center">
+                <input 
+                  type="text" 
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendText()}
+                  placeholder="Ask the Concierge..." 
+                  className="flex-1 bg-[#0E151B] border border-white/5 rounded-2xl py-4 px-6 text-sm text-white focus:ring-1 focus:ring-primary/40 outline-none transition-all shadow-inner"
+                />
+                <button 
+                  disabled={isTyping || !inputText.trim()}
+                  onClick={handleSendText}
+                  className={`p-4 rounded-2xl shadow-lg transition-all active:scale-90 ${
+                    isTyping || !inputText.trim() ? 'bg-gray-800 text-gray-500' : 'bg-primary text-white'
+                  }`}
+                >
+                  <span className="material-icons-round">{isTyping ? 'hourglass_top' : 'send'}</span>
+                </button>
+              </div>
             </div>
-            <span className="text-[9px] text-primary mt-2 px-2 uppercase font-bold tracking-widest animate-pulse">Typing...</span>
           </div>
         )}
-      </div>
-
-      {/* Footer Area */}
-      <div className="p-6 bg-[#0E151B] border-t border-white/5">
-        {/* Suggestion Chips */}
-        {!isLoading && !streamingText && (
-          <div className="flex gap-2 overflow-x-auto pb-4 mb-2 no-scrollbar">
-            {SUGGESTIONS.map((s, i) => (
-              <button 
-                key={i}
-                onClick={() => handleSend(s)}
-                className="whitespace-nowrap px-4 py-2 bg-white/5 border border-white/10 rounded-full text-[11px] font-medium text-gray-300 active:bg-primary/20 active:border-primary/50 transition-all"
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="flex gap-3 items-center relative">
-          <input 
-            type="text" 
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Ask anything about the union..." 
-            className="flex-1 bg-[#1A252F] border border-white/5 rounded-2xl py-5 px-6 shadow-inner focus:ring-1 focus:ring-primary/40 focus:border-primary/40 text-[15px] text-white placeholder-gray-500 outline-none transition-all"
-          />
-          <button 
-            disabled={isLoading || !input.trim()}
-            onClick={() => handleSend()}
-            className={`p-4 rounded-2xl shadow-xl transition-all active:scale-90 ${
-                isLoading || !input.trim() 
-                ? 'bg-gray-800 text-gray-500 cursor-not-allowed' 
-                : 'bg-primary text-white hover:shadow-primary/20'
-            }`}
-          >
-            <span className="material-icons-round">{isLoading ? 'hourglass_top' : 'send'}</span>
-          </button>
-        </div>
-        <p className="text-center text-[9px] text-gray-600 mt-4 uppercase tracking-[0.2em]">Wedding Concierge v2.0 • Est. 2025</p>
       </div>
 
       <style>{`
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 10px; }
       `}</style>
     </div>
   );
