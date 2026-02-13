@@ -8,7 +8,7 @@ const DiningScreen: React.FC = () => {
       id: '1',
       name: 'The Grand Darbar',
       description: 'Our flagship venue for the Sangeet and Reception. A royal culinary journey through the eras of the Maharajas, featuring slow-cooked delicacies and rare spice blends.',
-      image: 'https://images.unsplash.com/photo-1585937421612-70a0f295561a?auto=format&fit=crop&q=80&w=800',
+      image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&q=80&w=800',
       rating: '4.9',
       type: 'Royal Fine Dining',
       menu: ['Dal Makhani Risotto', 'Smoked Galouti Kebab', 'Saffron Pulao', 'Truffle Naan']
@@ -17,7 +17,7 @@ const DiningScreen: React.FC = () => {
       id: '2',
       name: 'Spice Courtyard',
       description: 'An vibrant open-air space celebrating India’s street food heritage. Live Chaat counters, Tandoors, and the sound of sizzling pans under the starlight.',
-      image: 'https://images.unsplash.com/photo-1601050690597-df056fb01793?auto=format&fit=crop&q=80&w=800',
+      image: 'https://images.unsplash.com/photo-1589302168068-964664d93dc0?auto=format&fit=crop&q=80&w=800',
       rating: '4.8',
       type: 'Casual Street Food',
       menu: ['Pani Puri Shots', 'Amritsari Kulcha', 'Pav Bhaji Sliders', 'Masala Chai']
