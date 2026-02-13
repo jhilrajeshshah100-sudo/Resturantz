@@ -60,7 +60,6 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
   const [streamingText, setStreamingText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Live API Refs
   const audioContextRef = useRef<AudioContext | null>(null);
   const sessionRef = useRef<any>(null);
   const nextStartTimeRef = useRef(0);
@@ -70,23 +69,29 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, streamingText, isTyping]);
 
-  // TEXT MODE: sendMessage
   const handleSendText = async () => {
     if (!inputText.trim() || isTyping) return;
     const userMsg = inputText.trim();
-    setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+    const newMessages: Message[] = [...messages, { role: 'user', text: userMsg }];
+    setMessages(newMessages);
     setInputText('');
     setIsTyping(true);
     setStreamingText('');
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const stream = await ai.models.generateContentStream({
-        model: 'gemini-3-flash-preview',
-        contents: [...messages, { role: 'user', text: userMsg }].map(m => ({
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+      
+      // CRITICAL FIX: Ensure history starts with 'user'
+      const apiContents = newMessages
+        .filter((m, idx) => !(idx === 0 && m.role === 'model'))
+        .map(m => ({
           role: m.role,
           parts: [{ text: m.text }]
-        })),
+        }));
+
+      const stream = await ai.models.generateContentStream({
+        model: 'gemini-3-flash-preview',
+        contents: apiContents,
         config: {
           systemInstruction: "You are the elegant Union Assistant for Farm & Fork wedding. Be warm, helpful, and concise. Use Google Search for weather and local info.",
           tools: [{ googleSearch: {} }]
@@ -100,28 +105,25 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
       }
       setMessages(prev => [...prev, { role: 'model', text: fullResponse }]);
       setStreamingText('');
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setMessages(prev => [...prev, { role: 'model', text: "I encountered an error. Please try again." }]);
+      setMessages(prev => [...prev, { role: 'model', text: `I encountered an issue: ${err.message || 'connection error'}. Please try again.` }]);
     } finally {
       setIsTyping(false);
     }
   };
 
-  // VOICE MODE: Toggle
   const toggleLive = async () => {
     if (isLive) {
-      // Close session
       if (sessionRef.current) sessionRef.current.close();
       if (audioContextRef.current) audioContextRef.current.close();
       setIsLive(false);
       return;
     }
 
-    // Start Live
     try {
       setIsLive(true);
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
       const inputCtx = new AudioContext({ sampleRate: 16000 });
       const outputCtx = new AudioContext({ sampleRate: 24000 });
       audioContextRef.current = outputCtx;
@@ -134,24 +136,17 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         callbacks: {
           onopen: () => {
-            console.log("Live session opened");
             processor.onaudioprocess = (e) => {
               const inputData = e.inputBuffer.getChannelData(0);
               const int16 = new Int16Array(inputData.length);
-              for (let i = 0; i < inputData.length; i++) {
-                int16[i] = inputData[i] * 32768;
-              }
-              const pcmBlob = {
-                data: encode(new Uint8Array(int16.buffer)),
-                mimeType: 'audio/pcm;rate=16000',
-              };
+              for (let i = 0; i < inputData.length; i++) { int16[i] = inputData[i] * 32768; }
+              const pcmBlob = { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' };
               sessionPromise.then(s => s.sendRealtimeInput({ media: pcmBlob }));
             };
             source.connect(processor);
             processor.connect(inputCtx.destination);
           },
           onmessage: async (msg: LiveServerMessage) => {
-            // Handle Audio Playback
             const audioData = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
             if (audioData) {
               const buf = await decodeAudioData(decode(audioData), outputCtx, 24000, 1);
@@ -164,17 +159,10 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
               sourcesRef.current.add(src);
               src.onended = () => sourcesRef.current.delete(src);
             }
-
-            // Interruptions
             if (msg.serverContent?.interrupted) {
               sourcesRef.current.forEach(s => s.stop());
               sourcesRef.current.clear();
               nextStartTimeRef.current = 0;
-            }
-
-            // Transcriptions
-            if (msg.serverContent?.modelTurn?.parts[0]?.text) {
-               // Update text chat history with transcribed turns if needed
             }
           },
           onclose: () => setIsLive(false),
@@ -187,7 +175,6 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
         }
       });
       sessionRef.current = await sessionPromise;
-
     } catch (err) {
       console.error(err);
       setIsLive(false);
@@ -196,7 +183,6 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
 
   return (
     <div className="flex flex-col h-screen bg-[#0E151B] text-white">
-      {/* Header */}
       <header className="p-6 flex items-center justify-between border-b border-white/5 bg-[#16212B]/80 backdrop-blur-xl">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 -ml-2 text-gray-400 hover:text-white transition-colors">
@@ -206,63 +192,36 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
             <h1 className="font-display text-2xl text-primary">Union Concierge</h1>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-green-500 animate-pulse' : 'bg-gray-600'}`}></span>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
-                {isLive ? 'Live Voice Active' : 'Text Mode'}
-              </span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{isLive ? 'Live Voice Active' : 'Text Mode'}</span>
             </div>
           </div>
         </div>
-        <div className="flex gap-2">
-            <button 
-                onClick={toggleLive}
-                className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-                    isLive ? 'bg-red-500 shadow-lg shadow-red-500/20' : 'bg-primary/10 text-primary border border-primary/20'
-                }`}
-            >
-                <span className="material-icons-round">{isLive ? 'mic_off' : 'mic'}</span>
-            </button>
-        </div>
+        <button onClick={toggleLive} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${isLive ? 'bg-red-500' : 'bg-primary/10 text-primary border border-primary/20'}`}>
+          <span className="material-icons-round">{isLive ? 'mic_off' : 'mic'}</span>
+        </button>
       </header>
 
-      {/* Main Content */}
       <div className="flex-1 overflow-hidden flex flex-col relative">
         {isLive ? (
           <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-[#0E151B]">
             <div className="relative mb-12">
-               {/* Pulsing Orb Visualizer */}
                <div className="absolute inset-0 bg-primary/20 rounded-full blur-3xl animate-pulse"></div>
                <svg className="w-48 h-48 relative z-10" viewBox="0 0 100 100">
                  <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="0.5" className="text-primary/20" />
                  <circle cx="50" cy="50" r="30" fill="url(#orbGradient)" className="animate-pulse" />
-                 <defs>
-                   <radialGradient id="orbGradient">
-                     <stop offset="0%" stopColor="#C5A059" />
-                     <stop offset="100%" stopColor="#8B6B32" />
-                   </radialGradient>
-                 </defs>
+                 <defs><radialGradient id="orbGradient"><stop offset="0%" stopColor="#C5A059" /><stop offset="100%" stopColor="#8B6B32" /></radialGradient></defs>
                </svg>
             </div>
             <h2 className="text-2xl font-display mb-4">Hands-Free Mode</h2>
-            <p className="text-gray-400 text-sm max-w-xs mx-auto leading-relaxed">
-              I'm listening. Ask me about the vineyard tour, weather, or dining reservations.
-            </p>
-            <button 
-                onClick={toggleLive}
-                className="mt-12 px-8 py-3 bg-white/5 border border-white/10 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-white/10 transition-colors"
-            >
-                Switch to Text
-            </button>
+            <p className="text-gray-400 text-sm max-w-xs mx-auto">I'm listening. Ask me anything about the wedding.</p>
+            <button onClick={toggleLive} className="mt-12 px-8 py-3 bg-white/5 border border-white/10 rounded-full text-xs font-bold uppercase tracking-widest">Switch to Text</button>
           </div>
         ) : (
           <div className="flex-1 flex flex-col overflow-hidden">
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
               {messages.map((m, i) => (
                 <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] p-5 rounded-3xl shadow-xl ${
-                    m.role === 'user' 
-                    ? 'bg-primary text-white rounded-tr-none' 
-                    : 'bg-[#1A252F] text-gray-100 rounded-tl-none border border-white/5'
-                  }`}>
+                  <div className={`max-w-[85%] p-5 rounded-3xl shadow-xl ${m.role === 'user' ? 'bg-primary text-white rounded-tr-none' : 'bg-[#1A252F] text-gray-100 rounded-tl-none border border-white/5'}`}>
                     <p className="text-[15px] leading-relaxed">{m.text}</p>
                   </div>
                 </div>
@@ -275,25 +234,10 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
                 </div>
               )}
             </div>
-
-            {/* Input Bar */}
             <div className="p-6 bg-[#16212B] border-t border-white/5">
               <div className="flex gap-3 items-center">
-                <input 
-                  type="text" 
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendText()}
-                  placeholder="Ask the Concierge..." 
-                  className="flex-1 bg-[#0E151B] border border-white/5 rounded-2xl py-4 px-6 text-sm text-white focus:ring-1 focus:ring-primary/40 outline-none transition-all shadow-inner"
-                />
-                <button 
-                  disabled={isTyping || !inputText.trim()}
-                  onClick={handleSendText}
-                  className={`p-4 rounded-2xl shadow-lg transition-all active:scale-90 ${
-                    isTyping || !inputText.trim() ? 'bg-gray-800 text-gray-500' : 'bg-primary text-white'
-                  }`}
-                >
+                <input type="text" value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendText()} placeholder="Ask the Concierge..." className="flex-1 bg-[#0E151B] border border-white/5 rounded-2xl py-4 px-6 text-sm text-white outline-none" />
+                <button disabled={isTyping || !inputText.trim()} onClick={handleSendText} className={`p-4 rounded-2xl ${isTyping || !inputText.trim() ? 'bg-gray-800 text-gray-500' : 'bg-primary text-white'}`}>
                   <span className="material-icons-round">{isTyping ? 'hourglass_top' : 'send'}</span>
                 </button>
               </div>
@@ -301,12 +245,6 @@ const ConciergeScreen: React.FC<ConciergeScreenProps> = ({ onBack }) => {
           </div>
         )}
       </div>
-
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 10px; }
-      `}</style>
     </div>
   );
 };
